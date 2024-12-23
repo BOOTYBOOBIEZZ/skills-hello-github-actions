@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 )
@@ -20,45 +19,67 @@ func (person *Person) Error() string {
 // the <icon src="AllIcons.Actions.Execute"/> icon in the gutter and select the <b>Run</b> menu item from here.</p>
 
 func main() {
-	server := Endpoint{Address: "127.0.0.1:8081"}
+	endpoint := Endpoints{}
 
-	http.HandleFunc("/create", server.HandleCreateFile)
+	http.HandleFunc("/create", endpoint.HandleCreateFile)
+	http.HandleFunc("/update", endpoint.HandleUpdateFile)
+
 	err := http.ListenAndServe(":8081", nil)
 	if err != nil {
 		fmt.Println(err)
 	}
-
 }
 
 type CreateFileRequest struct {
 	FileName string `json:"file_name"`
+	Payload  string `json:"payload"`
 }
 
-type Endpoint struct {
-	Address string
+type Endpoints struct {
 }
 
-func (endpoint *Endpoint) HandleCreateFile(w http.ResponseWriter, r *http.Request) {
+func (endpoint *Endpoints) HandleUpdateFile(w http.ResponseWriter, r *http.Request) {
+	request := CreateFileRequest{}
+
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		fmt.Println(err)
+		w.Write([]byte("Failed to update file"))
+		return
+	}
+	fileErr := os.WriteFile(request.FileName, []byte(request.Payload), 0644)
+	if fileErr != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Failed to update file"))
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Successfully updated file"))
+	return
+}
+
+func (endpoint *Endpoints) HandleCreateFile(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	jsonBody, readErr := io.ReadAll(r.Body)
-	if readErr != nil {
+	request := CreateFileRequest{}
+
+	jsonErr := json.NewDecoder(r.Body).Decode(&request)
+	if jsonErr != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Failed to read request body"))
 		return
 	}
 
-	a := string(jsonBody)
-	fmt.Println(a)
+	fileName := request.FileName + ".txt"
 
-	request := CreateFileRequest{}
-	jsonErr := json.Unmarshal(jsonBody, &request)
-	if jsonErr != nil {
+	if len(request.FileName) == 0 {
 		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("file name is required"))
 		return
 	}
 
-	_, fileErr := os.Create(request.FileName + ".txt")
+	_, fileErr := os.Create(fileName)
 	if fileErr != nil {
 		w.WriteHeader(http.StatusBadRequest)
 
