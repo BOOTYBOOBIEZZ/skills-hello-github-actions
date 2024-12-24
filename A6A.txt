@@ -1,0 +1,157 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"testing"
+	//"github.com/stretchr/testify/assert"
+)
+
+func TestHandleCreateFile(t *testing.T) {
+	endpoint := &Endpoints{}
+
+	//Podgotovka zaprosa
+	requestBody := CreateFileRequest{
+		FileName: "hello.txt",
+		Payload:  "HeyHey fella",
+	}
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodPost, "/create", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	//vipolnenie obrabotchika
+	endpoint.HandleCreateFile(w, req)
+
+	// check answer
+	resp := w.Result()
+	if resp.StatusCode != http.StatusCreated {
+		t.Error("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
+	}
+
+	// check payloads of file
+	content, err := ioutil.ReadFile("testfile.txt")
+	if err != nil {
+		t.Fatalf("Error reading created file: %v", err)
+	}
+	if string(content) != requestBody.Payload {
+		t.Errorf("Expected file content %q, got %q", requestBody.Payload, string(content))
+	}
+
+	//clear
+	os.Remove("testfile.txt")
+}
+
+func TestHandleReadFile(t *testing.T) {
+	endpoint := &Endpoints{}
+
+	// Preparing test file
+	fileName := "testread.txt"
+	newContent := "HeyHey fella"
+	err := os.WriteFile(fileName, []byte(newContent), 0644)
+	if err != nil {
+		t.Fatalf("Error reading file: %v", err)
+	}
+	defer os.Remove(fileName)
+
+	// preparing req
+	requestBody := CreateFileRequest{
+		FileName: fileName,
+	}
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodPost, "/read", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	//vipolnenie obrabotchika
+	endpoint.HandleReadFile(w, req)
+
+	//check response
+	resp := w.Result()
+	if resp.StatusCode != http.StatusCreated {
+		t.Error("Expected %d, got %d", http.StatusCreated, resp.StatusCode)
+	}
+
+	//checking payload of response
+	respBody, _ := ioutil.ReadFile(fileName)
+	if string(respBody) != newContent {
+		t.Errorf("Expected file content %q, got %q", newContent, string(respBody))
+	}
+}
+
+func TestHandleUpdateFile(t *testing.T) {
+	endpoint := &Endpoints{}
+
+	//Preparing test file
+	fileName := "testupdate.txt"
+	initialContent := "Old content"
+	newContent := "Updated content"
+	err := os.WriteFile(fileName, []byte(initialContent), 0644)
+	if err != nil {
+		t.Fatalf("Error updating file: %v", err)
+	}
+	defer os.Remove(fileName)
+
+	// preparing req
+	requestBody := CreateFileRequest{
+		FileName: fileName,
+		Payload:  newContent,
+	}
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodPut, "/update", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	// vipolnenie obrabotchika
+	endpoint.HandleUpdateFile(w, req)
+
+	// Checking answer
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Error("Expected %d, got %d", http.StatusOK, resp.StatusCode)
+	}
+
+	// Checking payload of the file
+	updatedContent, _ := ioutil.ReadFile(fileName)
+	if err != nil {
+		t.Fatalf("Error reading updated file: %v", err)
+	}
+	if string(updatedContent) != newContent {
+		t.Errorf("Expected file content %q, got %q", newContent, string(updatedContent))
+	}
+}
+
+func TestHandleDeleteFile(t *testing.T) {
+	endpoint := &Endpoints{}
+
+	// preparing test file
+	fileName := "testdelete.txt"
+	err := os.WriteFile(fileName, []byte("Temporary content"), 0644)
+	if err != nil {
+		t.Fatalf("Error deleting file: %v", err)
+	}
+
+	// Preparing req
+	requestBody := CreateFileRequest{
+		FileName: fileName,
+	}
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodDelete, "/delete", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	//Vipolnenie obrabotchika
+	endpoint.HandleDeleteFile(w, req)
+
+	//checking answer
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Error("Expected status %d, got %d", http.StatusOK, resp.StatusCode)
+	}
+
+	// Checking that file was deleted
+	if _, err := os.Stat(fileName); !os.IsNotExist(err) {
+		t.Error("Expected file to be deleted")
+	}
+
+}

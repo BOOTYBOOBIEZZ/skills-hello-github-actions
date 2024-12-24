@@ -3,102 +3,172 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"io/ioutil"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
-func TestHandleCreateFile_Success(t *testing.T) {
+// Тест создания файла
+func TestHandleCreateFile(t *testing.T) {
 	endpoint := &Endpoints{}
 
-	//Podgotovka zaprosa
+	// Подготовка запроса
 	requestBody := CreateFileRequest{
-		FileName: "hello.txt",
-		Payload:  "HeyHey fella",
+		FileName: "testfile",
+		Payload:  "Hello, World!",
 	}
-	body, _ := json.Marshal(requestBody)
+	body, err := json.Marshal(requestBody)
+	if err != nil {
+		t.Fatalf("Error marshaling request body: %v", err)
+	}
 	req := httptest.NewRequest(http.MethodPost, "/create", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 
-	//vipolnenie obrabotchika
+	// Выполнение обработчика
 	endpoint.HandleCreateFile(w, req)
 
-	// check answer
+	// Проверка ответа
 	resp := w.Result()
+	if resp.StatusCode != http.StatusCreated {
+		t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
+	}
 
-	//тестовый запрос
-	payload := []byte("{\"file_name\":\"testfile\"}")
-	req := httptest.NewRequest(http.MethodPost, "/create", bytes.NewBuffer(payload))
-	rr := httptest.NewRecorder()
+	// Проверка содержимого созданного файла
+	content, err := os.ReadFile("testfile.txt")
+	if err != nil {
+		t.Fatalf("Error reading created file: %v", err)
+	}
+	if string(content) != requestBody.Payload {
+		t.Errorf("Expected file content %q, got %q", requestBody.Payload, string(content))
+	}
 
-	//вызываем обработчик
-	handler := http.HandlerFunc(server.HandleCreateFile)
-	handler.ServeHTTP(rr, req)
-
-	//проверяем ответ
-	assert.Equal(t, http.StatusCreated, rr.Code, "Expected 201 Created")
-
-	//проверяем что файл создан
-	_, err := os.Stat("testfile.txt")
-	assert.NoError(t, err, "File should have been created")
-
-	//Ydalyaem test file
-	_ = os.Remove("testfile.txt")
-
+	// Удаление файла
+	defer os.Remove("testfile.txt")
 }
 
-func TestHandleCreateFile_InvalidJSON(t *testing.T) {
-	server := Endpoint{}
+// Тест чтения файла
+func TestHandleReadFile(t *testing.T) {
+	endpoint := &Endpoints{}
 
-	//nekorrektnyi JSON
-	payload := []byte("{invalid}")
-	req := httptest.NewRequest(http.MethodPost, "/create", bytes.NewBuffer(payload))
-	rr := httptest.NewRecorder()
+	// Подготовка тестового файла
+	fileName := "testread.txt"
+	content := "Hello, World!"
+	err := os.WriteFile(fileName, []byte(content), 0644)
+	if err != nil {
+		t.Fatalf("Error writing test file: %v", err)
+	}
+	defer os.Remove(fileName)
 
-	//vizivaem obrabotchik
-	handler := http.HandlerFunc(server.HandleCreateFile)
-	handler.ServeHTTP(rr, req)
+	// Подготовка запроса
+	requestBody := CreateFileRequest{
+		FileName: fileName,
+	}
+	body, err := json.Marshal(requestBody)
+	if err != nil {
+		t.Fatalf("Error marshaling request body: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/read", bytes.NewReader(body))
+	w := httptest.NewRecorder()
 
-	//Proveryaem otvet
-	assert.Equal(t, http.StatusBadRequest, rr.Code, "Expected 400 Bad Request")
-	assert.Contains(t, rr.Body.String(), "Invalid JSON format", "Expected error message about JSON")
+	// Выполнение обработчика
+	endpoint.HandleReadFile(w, req)
 
+	// Проверка ответа
+	resp := w.Result()
+	if resp.StatusCode != http.StatusCreated {
+		t.Errorf("Expected status %d, got %d", http.StatusCreated, resp.StatusCode)
+	}
+
+	// Проверка содержимого ответа
+	respBody := w.Body.String()
+	if respBody != content {
+		t.Errorf("Expected response body %q, got %q", content, respBody)
+	}
+	w.WriteHeader(http.StatusOK)
+	fmt.Println(content)
 }
 
-func TestHandleCreateFile_FileCreationError(t *testing.T) {
-	server := Endpoint{}
+// Тест обновления файла
+func TestHandleUpdateFile(t *testing.T) {
+	endpoint := &Endpoints{}
 
-	//nekorrektnoe imya file'a
+	// Подготовка тестового файла
+	fileName := "testupdate.txt"
+	initialContent := "Initial Content"
+	updatedContent := "Updated Content"
+	err := os.WriteFile(fileName, []byte(initialContent), 0644)
+	if err != nil {
+		t.Fatalf("Error creating test file: %v", err)
+	}
+	defer os.Remove(fileName)
 
-	payload := []byte("{\"file_name\":\"/invalid/path/testfile\"}")
-	req := httptest.NewRequest(http.MethodPost, "/create", bytes.NewBuffer(payload))
-	rr := httptest.NewRecorder()
+	// Подготовка запроса
+	requestBody := CreateFileRequest{
+		FileName: fileName,
+		Payload:  updatedContent,
+	}
+	body, err := json.Marshal(requestBody)
+	if err != nil {
+		t.Fatalf("Error marshaling request body: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPut, "/update", bytes.NewReader(body))
+	w := httptest.NewRecorder()
 
-	//vyzyvaem obrabotchik
-	handler := http.HandlerFunc(server.HandleCreateFile)
-	handler.ServeHTTP(rr, req)
+	// Выполнение обработчика
+	endpoint.HandleUpdateFile(w, req)
 
-	//check answer
-	assert.Equal(t, http.StatusBadRequest, rr.Code, "Expected 400 Bad Request")
+	// Проверка ответа
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, resp.StatusCode)
+	}
 
+	// Проверка содержимого файла
+	content, err := os.ReadFile(fileName)
+	if err != nil {
+		t.Fatalf("Error reading updated file: %v", err)
+	}
+	if string(content) != updatedContent {
+		t.Errorf("Expected file content %q, got %q", updatedContent, string(content))
+	}
 }
 
-func TestHandleCreateFile_EmptyFileName(t *testing.T) {
-	server := Endpoint{}
+// Тест удаления файла
+func TestHandleDeleteFile(t *testing.T) {
+	endpoint := &Endpoints{}
 
-	//empty file name
-	payload := []byte("{\"file_name\":\"\"}")
-	req := httptest.NewRequest(http.MethodPost, "/create", bytes.NewBuffer(payload))
-	rr := httptest.NewRecorder()
+	// Подготовка тестового файла
+	fileName := "testdelete.txt"
+	err := os.WriteFile(fileName, []byte("Temporary Content"), 0644)
+	if err != nil {
+		t.Fatalf("Error creating test file: %v", err)
+	}
+	defer os.Remove(fileName)
 
-	//call obrabotchik
-	handler := http.HandlerFunc(server.HandleCreateFile)
-	handler.ServeHTTP(rr, req)
+	// Подготовка запроса
+	requestBody := CreateFileRequest{
+		FileName: fileName,
+	}
+	body, err := json.Marshal(requestBody)
+	if err != nil {
+		t.Fatalf("Error marshaling request body: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodDelete, "/delete", bytes.NewReader(body))
+	w := httptest.NewRecorder()
 
-	//Check answer
-	assert.Equal(t, http.StatusBadRequest, rr.Code, "Expected 400 Bad Request")
+	// Выполнение обработчика
+	endpoint.HandleDeleteFile(w, req)
+
+	// Проверка ответа
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, resp.StatusCode)
+	}
+
+	// Проверка удаления файла
+	if _, err := os.Stat(fileName); !os.IsNotExist(err) {
+		t.Error("Expected file to be deleted")
+	}
 }
