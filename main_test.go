@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,7 +13,22 @@ import (
 )
 
 func TestHandleCreateFile_Success(t *testing.T) {
-	server := Endpoint{}
+	endpoint := &Endpoints{}
+
+	//Podgotovka zaprosa
+	requestBody := CreateFileRequest{
+		FileName: "hello.txt",
+		Payload:  "HeyHey fella",
+	}
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodPost, "/create", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	//vipolnenie obrabotchika
+	endpoint.HandleCreateFile(w, req)
+
+	// check answer
+	resp := w.Result()
 
 	//тестовый запрос
 	payload := []byte("{\"file_name\":\"testfile\"}")
